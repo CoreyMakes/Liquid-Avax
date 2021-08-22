@@ -338,7 +338,7 @@ I simply added the constructor function calling the constructor from the ERC20 c
 
 
 Now we can "upload" our SC onchain via remix by simply putting all three files in our directory and click deploy.
-
+([Tutorial](https://docs.avax.network/build/tutorials/smart-contracts/deploy-a-smart-contract-on-avalanche-using-remix-and-metamask))
 
 
 ### Backend
