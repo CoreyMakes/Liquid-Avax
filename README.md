@@ -50,7 +50,17 @@ When the event "StakeEnded" is detected, the user will be able to redeem the fun
 
 Okay, we hope that you are now full set to go through the tutorial. We will start by the smart contract.
 
-All the code can be found on our github, please head on to [https://github.com/iFrostizz/Liquid-Avax/tree/master](https://github.com/iFrostizz/Liquid-Avax/tree/master)
+Find the code on Github:
+
+Smart contracts: [https://github.com/Syavel/AvalancheTuto/tree/main/contracts](https://github.com/Syavel/AvalancheTuto/tree/main/contracts)
+
+Backend: [https://github.com/Syavel/AvalancheTuto/tree/main/Backend](https://github.com/Syavel/AvalancheTuto/tree/main/Backend)
+
+Frontend: [https://github.com/iFrostizz/fluidavax-frontend/tree/devel](https://github.com/iFrostizz/fluidavax-frontend/tree/devel)
+
+UI kit: [https://github.com/iFrostizz/fluidavax-uikit](https://github.com/iFrostizz/fluidavax-uikit)
+
+SDK: [https://github.com/iFrostizz/fluidavax-sdk](https://github.com/iFrostizz/fluidavax-sdk)
 
 ### Smart contract
 
