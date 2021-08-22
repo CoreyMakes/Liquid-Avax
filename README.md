@@ -139,6 +139,8 @@ import avalanche from "avalanche";
 import Web3 from "web3";
 import { Buffer } from "buffer";
 
+let binTools = avalanche.BinTools.getInstance();
+
 let ip, protocol, port, networkID, avalancheInstance;
 
 let xChain, xKeyChain, xChainAddress;
@@ -154,8 +156,6 @@ let utxoset;
 async function CtoP() { //a C --> P cross-chain transfer doesn't exists, but C --> X, X --> P does.
 
 }
-
-let binTools = avalanche.BinTools.getInstance();
 
 async function importKeys() { //Importing your encoded private key here to the node!
 
