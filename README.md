@@ -16,7 +16,7 @@ Liquid staking is an alternative to staking. The advantage of liquid staking is 
 
 #### How does it work ?
 
-Using the interface, the user is able to stake his $AVAX and get $sAVAX in exchange at a 1:1 rate. The user can also monitor all its current stakes if the stake is not finished yet and/or not withdrew by the backend. To withdraw the funds, the user will need to provide back the $sAVAX tokens against what he will get his $AVAX again with the staking rewards.
+Using the interface, the user is able to stake his $AVAX and get $sAVAX in exchange at a 1:1 rate. The user can also monitor all its current stakes if the stake is not finished yet and/or not withdrew by the backend. To redeem the funds, the user will need to provide back the $sAVAX tokens against what he will get his $AVAX again with the staking rewards.
 
 
 
@@ -78,7 +78,7 @@ v14.16.0
 
 You don't need to follow the installation steps.
 
-If not, please install node v12.0.0 or earlier.
+If not, please install node v14.16.0 or earlier.
 
 #### Windows / macOS
 
@@ -209,6 +209,14 @@ try {
 }
 ```
 
+Notice the X-Chain, C-Chain, P-Chain in the code ?
+
+The Avalanche network operates 3 chains. 
+
+* The X-Chain, or eXchange chain is the chain that is implementing the AVM \(Avalanche virtual machine\) with the Avalanche consensus. It is usually used to create, exchange assets.
+* The C-Chain, or Contract chain is an instance of the EVM \(Ethereum virtual machine\) that is able to run smart contracts.
+* The P-Chain, or Platform chain is implementing the snowman consensus, like the C-chain. It can be used to add a validator node \(A node that validates transactions on the network to keep it secure\), a delegator \(an actor staking his assets on validator nodes to help securise the network, while earning returns\), create custom chains, ...
+
 You may have noticed that we imported some packages at the top of the code. Here is how to install a package and store it in the package.json:
 
 ```text
@@ -260,5 +268,26 @@ cAvaxAssetId = binTools.cb58Encode((await cChain.getAssetDescription("AVAX")).as
 web3 = new Web3(`${protocol}://${ip}:${port}${endpoint}`);
 ```
 
-Note that these values are valid for a local node on fuji.
+This is the place where we are instanciating our nodes for both AvalancheJS and web3. We are also storing some data that will be useful for the future.
+
+{% hint style="info" %}
+These values are valid for a local node on fuji only.
+{% endhint %}
+
+This will be the content of your `importKeys` function:
+
+```text
+const pKeyHex = JSON.parse(await fs.readFileSync("./data.json")).privateKey;
+let buffer = Buffer.from(pKeyHex, 'hex')
+let CB58Encoded = `PrivateKey-${binTools.cb58Encode(buffer)}`
+xKeyChain.importKey(CB58Encoded);
+cKeyChain.importKey(buffer);
+pKeyChain.importKey(CB58Encoded);
+```
+
+We are getting the private key from our file and converting it to buffer for the C-chain. For the X and P-Chain, we need to derivate to CB58 format. Then, we can import these encoded versions of the private key to the node.
+
+That's over for the `setup`. We are ready to listen to the smart contract to emit the "Staked" event.
+
+Now, we will start the C --&gt; P cross-chain transfer
 
