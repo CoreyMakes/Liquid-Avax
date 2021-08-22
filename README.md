@@ -36,6 +36,25 @@ The frontend, or user interface is our platform called "Liquid Avax". We forked 
 
 The smart contract is based on ERC20 smart contracts. It handles requests made by the frontend, and emits events for the backend.
 
+
+
+#### Backend
+
+The backend is basically a nodeJS script running 24/7 waiting for an Event such as "Staked" or "StakeEnded" to be emitted from the smart contract.
+
+When the event "Staked" is emitted, it will retrieve the staker address, the stakeID, and the amount of $AVAX staked from it. This will be used to transfer the funds from the C to P chain and stake the funds on a node for a defined amount of time.
+
+When the event "StakeEnded" is detected, the user will be able to redeem the funds. The backend will cross chain from P to C and send the funds to the smart contract.
+
+
+
+## Tutorial
+
+Okay, we hope that you are now full set to go through the tutorial. We will start by the smart contract.
+
+All the code can be found on our github, please head on to [https://github.com/iFrostizz/Liquid-Avax/tree/master](https://github.com/iFrostizz/Liquid-Avax/tree/master)
+
+### Smart contract
 We start by importing the basic ERC20 smart contract (this is a common standart for creating tokens, more details here :) and the Ownable one (this is a contract wich permit to restrain function to an owner adress).
 ```text
 pragma solidity ^0.8.0;
@@ -131,25 +150,194 @@ function setPChainTx(uint256 stakeId, string calldata h) public onlyOwner {
 ```
 again very simple we just need to require it to be called by the owner then we update the PChainTx attribute.
 
+Now we will code the function called by the BackEnd to returns funds after the staking period ended :
+```text
+function updateStake(uint256 stakeId, uint256 finalAmount) public payable onlyOwner {
+    require(msg.value >= finalAmount, "Not enough avax sent");
+    Stake storage s = stakeds[stakeId];
+    require(finalAmount >= s.amount, "final amount must be greater than deposited amount");
+    s.finalAmount = finalAmount;
+    s.updated = true ;
+
+    emit StakeEnded(stakeId, finalAmount);
+}
+```
+Once again only callable by the owner it requires to sent as much or more than the amount deposited by the user, the back end provide a finalAMount value representing the amount deposited + rewards earned while staking.
+We update the staking struct and emit an event (once again we will see that later)
+
+Now we will call the function for a user to get his funds back :
+```text
+function redeem(uint256 stakeId) public {
+    Stake storage s = stakeds[stakeId] ;
+    require(s.endingTimestamp > block.timestamp, "Staking period not ended");
+    require(s.updated == true, "Stake not yet transferred on C-chain");
+    require(s.redeemed == false, "Stake already redemeed");
+    require(balanceOf(msg.sender) >= s.amount, "Not enough sAVAX on address");
+    require(s.user == msg.sender || s.endingTimestamp > block.timestamp + secondsBeforeAllRedeem, "Not stake owner");
+    s.redeemed = true ;
+    _burn(msg.sender, s.amount);
+    require(payable(msg.sender).send(s.finalAmount), "Send failed");
+}
+```
+
+This one is a bit more complex, it can be called by anyone so we need to check if the person calling it is the person who deposited the stake (not that we introduced a possibility for anyone to call this function after a serious delay (like 2 months) in case someone forget / lost his account), we also need to check if the staking period as ended and if the backend already sent funds back from P-Chain and most important we need to check if he has enough sAVAX to burn on his address.
+
+When we checked all we can now burn his sAVAX and send back the finalAmount of AVAX to his address.
+
+We also need to remove the stake id from his active stake
+```text
+    uint256 index;
+    for (uint i=0; i<currentStakedByUser[msg.sender].length; i++){
+        if (currentStakedByUser[msg.sender][i] == stakeId) {
+            index = i ;
+            break;
+        }
+    }
+    currentStakedByUser[msg.sender][index] = currentStakedByUser[msg.sender][currentStakedByUser[msg.sender].length - 1];
+    delete currentStakedByUser[msg.sender][currentStakedByUser[msg.sender].length - 1];
+    currentStakedByUser[msg.sender].pop();
+
+    emit Redeem(stakeId, s.finalAmount);
+```
+We do it by looping trough all of his current stakes and swapping the last one with the one we want to remove to finally popping the last element (weird solidity way of removing an element from a list)
+
+Finally we code the functions allowing to updates gouvernance driven variables :
+```text
+function updateVariables(uint256 secondsF, uint256 maxSecondsF, uint256 secondsAll, uint256 minimum) public onlyOwner {
+        maxSecondsInFuture = maxSecondsF ;
+        secondsInFuture = secondsF ;
+        secondsBeforeAllRedeem = secondsAll ;
+        minimumValue = minimum ;
+    }
+```
+which simply updates all this variables at once.
+
+Now the last function is simply a view function (not doing anything on the blockchain) :
+```text
+function stakeByUser(address user) public view  returns(uint256[] memory toto){
+        return currentStakedByUser[user];
+    }
+```
+which allow to see all the current stakes by an address
+
+We're almost done let's see the whole file :
+```text
+pragma solidity ^0.8.0;
+
+import "ERC20.sol";
+import "Ownable.sol";
+
+contract stakedAVAX is ERC20, Ownable {
+
+    uint256 public stakeNumber = 0;
+    mapping(address=>uint256[]) public currentStakedByUser ;
+    struct Stake{
+        address payable user;
+        uint256 stakeId ;
+        uint256 amount ;
+        uint256 finalAmount ;
+        uint256 endingTimestamp ;
+        bool withdraw ;
+        bool updated ;
+        bool redeemed ;
+        string PChainTx ;
+    }
+    mapping (uint256 => Stake) public stakeds ;
+    uint256 public secondsInFuture = 14*24*3600 ;
+    uint256 public maxSecondsInFuture = 365*24*3600;
+    uint256 public secondsBeforeAllRedeem = 60*24*3600 ;
+    uint256 public minimumValue = 25 ether ;
+
+    constructor() ERC20("stakedAVAX", "sAVAX") {
+
+    }
+
+    function stakeByUser(address user) public view  returns(uint256[] memory toto){
+        return currentStakedByUser[user];
+    }
+
+    function stake(uint256 timestamp) public payable {
+        require(timestamp > block.timestamp + secondsInFuture, "Ending period not enough in the future");
+        require(msg.value >= minimumValue, "Not enough avax for delegation");
+        Stake storage s = stakeds[stakeNumber];
+        s.stakeId = stakeNumber;
+        s.amount = msg.value ;
+        s.endingTimestamp = timestamp ;
+        s.user = payable(msg.sender) ;
+        currentStakedByUser[msg.sender].push(stakeNumber);
+        _mint(msg.sender, msg.value);
+
+        emit Staked(s.user, s.stakeId, msg.value);
+        stakeNumber++;
+    }
+
+    function updateStake(uint256 stakeId, uint256 finalAmount) public payable onlyOwner {
+        require(msg.value >= finalAmount, "Not enough avax sent");
+        Stake storage s = stakeds[stakeId];
+        require(finalAmount >= s.amount, "final amount must be greater than deposited amount");
+        s.finalAmount = finalAmount;
+        s.updated = true ;
+
+        emit StakeEnded(stakeId, finalAmount);
+    }
+
+    function redeem(uint256 stakeId) public {
+        Stake storage s = stakeds[stakeId] ;
+        require(s.endingTimestamp > block.timestamp, "Staking period not ended");
+        require(s.updated == true, "Stake not yet transferred on C-chain");
+        require(s.redeemed == false, "Stake already redemeed");
+        require(balanceOf(msg.sender) >= s.amount, "Not enough sAVAX on address");
+        require(s.user == msg.sender || s.endingTimestamp > block.timestamp + secondsBeforeAllRedeem, "Not stake owner");
+        s.redeemed = true ;
+        _burn(msg.sender, s.amount);
+        require(payable(msg.sender).send(s.finalAmount), "Send failed");
+
+        uint256 index;
+        for (uint i=0; i<currentStakedByUser[msg.sender].length; i++){
+            if (currentStakedByUser[msg.sender][i] == stakeId) {
+                index = i ;
+                break;
+            }
+        }
+        currentStakedByUser[msg.sender][index] = currentStakedByUser[msg.sender][currentStakedByUser[msg.sender].length - 1];
+        delete currentStakedByUser[msg.sender][currentStakedByUser[msg.sender].length - 1];
+        currentStakedByUser[msg.sender].pop();
+
+        emit Redeem(stakeId, s.finalAmount);
+    }
+
+    function withdraw(uint256 stakeId) public onlyOwner {
+        Stake storage s = stakeds[stakeId] ;
+        require(s.withdraw == false, "Already Withdrawn");
+        require(payable(msg.sender).send(s.amount), "Send failed");
+        s.withdraw = true ;
+
+    }
+
+    function setPChainTx(uint256 stakeId, string calldata h) public onlyOwner {
+        Stake storage s = stakeds[stakeId] ;
+        s.PChainTx = h ;
+    }
+
+    function updateVariables(uint256 secondsF, uint256 maxSecondsF, uint256 secondsAll, uint256 minimum) public onlyOwner {
+        maxSecondsInFuture = maxSecondsF ;
+        secondsInFuture = secondsF ;
+        secondsBeforeAllRedeem = secondsAll ;
+        minimumValue = minimum ;
+    }
+
+    event Staked(address indexed user, uint256 stakeId, uint256 value);
+
+    event StakeEnded(uint256 stakeId, uint256 finalAmount);
+
+    event Redeem(uint256 stakeId, uint256 finalAmount);
+}
+```
+
+I simply added the constructor function calling the constructor from the ERC20 contract which defines the name and the symbol of our sAVAX token and the events which simply works like onchain logs, so it's easier for people building on top of project to retrieve when this action happened etc.
 
 
-#### Backend
-
-The backend is basically a nodeJS script running 24/7 waiting for an Event such as "Staked" or "StakeEnded" to be emitted from the smart contract.
-
-When the event "Staked" is emitted, it will retrieve the staker address, the stakeID, and the amount of $AVAX staked from it. This will be used to transfer the funds from the C to P chain and stake the funds on a node for a defined amount of time.
-
-When the event "StakeEnded" is detected, the user will be able to redeem the funds. The backend will cross chain from P to C and send the funds to the smart contract.
-
-
-
-## Tutorial
-
-Okay, we hope that you are now full set to go through the tutorial. We will start by the smart contract.
-
-All the code can be found on our github, please head on to [https://github.com/iFrostizz/Liquid-Avax/tree/master](https://github.com/iFrostizz/Liquid-Avax/tree/master)
-
-### Smart contract
+Now we can "upload" our SC onchain via remix by simply putting all three files in our directory and click deploy.
 
 
 
