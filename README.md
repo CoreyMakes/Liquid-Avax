@@ -36,6 +36,103 @@ The frontend, or user interface is our platform called "Liquid Avax". We forked 
 
 The smart contract is based on ERC20 smart contracts. It handles requests made by the frontend, and emits events for the backend.
 
+We start by importing the basic ERC20 smart contract (this is a common standart for creating tokens, more details here :) and the Ownable one (this is a contract wich permit to restrain function to an owner adress).
+```text
+pragma solidity ^0.8.0;
+
+import "ERC20.sol";
+import "Ownable.sol";
+```
+
+Then we need to write 4 main functions : 
+- One when a user deposit AVAX and mint sAVAX
+- One to permit the backend to withdraw this funds
+- One for the backend to put back fund + rewards on the contract
+- And one to permit the user to get their funds back in exchange of sAVAX
+
+In addition for clarity and reliability we will also need :
+- One function to make the P-Chain tx viewable on C-chain (updated by the backend)
+- One view function to view all stakes by an user
+- One function to update some variables (as minimum staking time etc when future gouvernance changes it)
+
+We will also need some variables to stock the staking informations :
+We willuse a struct to store all informations relative to a stake :
+```text
+struct Stake{
+    address payable user;
+    uint256 stakeId ;
+    uint256 amount ;
+    uint256 finalAmount ;
+    uint256 endingTimestamp ;
+    bool withdraw ;
+    bool updated ;
+    bool redeemed ;
+    string PChainTx ;
+}
+```
+and we will use a mapping to link an id to a stake and a int containing the number of stake:
+```text
+uint256 public stakeNumber = 0;
+mapping (uint256 => Stake) public stakeds ;
+```
+
+To make frontend call easier we will also link an adress with all his stakes ids :
+```text
+mapping(address=>uint256[]) public currentStakedByUser ;
+```
+and some variables so we can change this values later in case of gouvernance votes :
+```text
+uint256 public secondsInFuture = 14*24*3600 ;
+uint256 public maxSecondsInFuture = 365*24*3600;
+uint256 public secondsBeforeAllRedeem = 60*24*3600 ;
+uint256 public minimumValue = 25 ether ;
+```
+
+Now let's begin with our first fonction to allow users deposit a stake.
+This will just need 2 variables : the staking time (represented by a timestamp of the stake end) and the amount which is provided via msg.value in solidity
+We just need some checking (the staking time should be greater than 2 weeks and smaller than 1 year / the staking amount should be larger than 25 AVAX)
+
+We create a new Stake element and we populate his attribute with known ones, we map it to retrieve it with his id, we add it to the list of stakes by user and we can now mint some fresh sAVAX to the user adress and increase the number of stakes.
+(we also emit an event which we will explain later)
+```text
+function stake(uint256 timestamp) public payable {
+    require(timestamp > block.timestamp + secondsInFuture, "Ending period not enough in the future");
+    require(msg.value >= minimumValue, "Not enough avax for delegation");
+    Stake storage s = stakeds[stakeNumber];
+    s.stakeId = stakeNumber;
+    s.amount = msg.value ;
+    s.endingTimestamp = timestamp ;
+    s.user = payable(msg.sender) ;
+    currentStakedByUser[msg.sender].push(stakeNumber);
+    _mint(msg.sender, msg.value);
+
+    emit Staked(s.user, s.stakeId, msg.value);
+    stakeNumber++;
+}
+```
+
+Now let's code the function allowing the backend to withdraw the funds in order to stake it :
+```text
+function withdraw(uint256 stakeId) public onlyOwner {
+    Stake storage s = stakeds[stakeId] ;
+    require(s.withdraw == false, "Already Withdrawn");
+    require(payable(msg.sender).send(s.amount), "Send failed");
+    s.withdraw = true ;
+}
+```
+This function is very simple, it requires the caller to be the owner (aka backend private key), then it checks if the backend did not alreayd withdrawn funds for that stake and then send them to the back end adress
+
+Now let's code the function which just update the PChainTx attribute of a stake :
+```text
+function setPChainTx(uint256 stakeId, string calldata h) public onlyOwner {
+    Stake storage s = stakeds[stakeId] ;
+    s.PChainTx = h ;
+}
+```
+again very simple we just need to require it to be called by the owner then we update the PChainTx attribute.
+
+
+
 #### Backend
 
 The backend is basically a nodeJS script running 24/7 waiting for an Event such as "Staked" or "StakeEnded" to be emitted from the smart contract.
