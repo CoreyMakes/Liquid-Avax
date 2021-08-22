@@ -112,11 +112,153 @@ Start by creating an Avalanche wallet here: [https://wallet.avax.network/](https
 Make sure to never share this private key. Anyone can access to your wallet using it.
 {% endhint %}
 
-Copy and paste it in a ".json" file. Let's call it "privateData.json"
+Copy and paste it in a ".json" file. Let's call it "privateData.json". If you plan to publish to your repo, create a .gitignore containing all the private stuff.
 
+```text
+{
+  "privateKey": "D0N075H4r37H15704NY0N3"
+}
+```
 
+Create a new file, we can call it backend.js .
 
-First, copy and paste the code skeleton. We will go through each step.
+Now, let's initiate the NodeJS development environment.
 
+```text
+npm init
+```
 
+Follow the prompt, and copy/paste the code skeleton in the .js file.
+
+```text
+// This script will be used to do the cross-chain transfer of the owner wallet from C to P chain and stake them
+// to a node.
+
+import fs from "fs";
+import avalanche from "avalanche";
+import Web3 from "web3";
+import { Buffer } from "buffer";
+
+let ip, protocol, port, networkID, avalancheInstance;
+
+let xChain, xKeyChain, xChainAddress;
+let cChain, cKeyChain, cChainAddress;
+let pChain, pKeyChain, pChainAddress;
+
+let xChainBlockchainID, cChainBlockchainID, pChainBlockchainID;
+
+let web3;
+
+let utxoset;
+
+async function CtoP() { //a C --> P cross-chain transfer doesn't exists, but C --> X, X --> P does.
+
+}
+
+let binTools = avalanche.BinTools.getInstance();
+
+async function importKeys() { //Importing your encoded private key here to the node!
+
+}
+
+let transactionStatus;
+
+async function waitForStatusX(transactionId) {
+    transactionStatus = await xChain.getTxStatus(transactionId);
+    return transactionStatus;
+}
+
+async function waitForStatusP(transactionId) { //Either X or P chain.
+    transactionStatus = (await pChain.getTxStatus(transactionId)).status;
+    return transactionStatus;
+}
+
+async function waitForStatusC(transactionId) {
+    transactionStatus = await cChain.getAtomicTxStatus(transactionId);
+    return transactionStatus;
+}
+
+async function pollTransaction(func, transactionID, resolve, reject) {
+    transactionStatus = await func(transactionID);
+    if (transactionStatus === "Rejected") {
+        reject(transactionStatus);
+    }
+    if (transactionStatus !== "Accepted") {
+        setTimeout(pollTransaction, 100, func, transactionID, resolve, reject);
+    } else {
+        resolve(transactionStatus);
+    }
+}
+
+let xAvaxAssetId, cAvaxAssetId;
+
+async function getInformations() { //Getting some relevant data for the code
+
+}
+
+async function setup() {
+    await getInformations();
+    await importKeys();
+}
+
+try {
+    await setup();
+    await CtoP();
+} catch (e) {
+    console.log("We got an error! " + e);
+}
+```
+
+You may have noticed that we imported some packages at the top of the code. Here is how to install a package and store it in the package.json:
+
+```text
+npm install <package>
+```
+
+And this how to install AvalancheJS for instance:
+
+```text
+npm install avalanche
+```
+
+Do that for each used package at the top of the code.
+
+The "fs" package is used to manipulate files. In this case, it is our solution to not hard code the private key and keep it safe.
+
+AvalancheJS is the Javascript library from Ava labs to interact with an Avalanche node. You can find their repository here with relevant code examples. [https://github.com/ava-labs/avalanchejs](https://github.com/ava-labs/avalanchejs)
+
+The "web3" package will be used to interact with our smart contract.
+
+Paste this in the `getInformations` function:
+
+```text
+ip = "localhost";
+port = 9650;
+protocol = "http";
+networkID = 5;
+avalancheInstance = new avalanche.Avalanche(ip, port, protocol, networkID);
+    
+const endpoint = '/ext/bc/C/rpc';
+    
+xChain = avalancheInstance.XChain();
+xKeyChain = xChain.keyChain();
+xChainBlockchainID = xChain.getBlockchainID();
+    
+cChain = avalancheInstance.CChain();
+cKeyChain = cChain.keyChain();
+cChainBlockchainID = cChain.getBlockchainID();
+cChainAddress = cKeyChain.getAddressStrings();
+    
+pChain = avalancheInstance.PChain();
+pKeyChain = pChain.keyChain();
+pChainBlockchainID = pChain.getBlockchainID();
+pChainAddress = pKeyChain.getAddressStrings();
+    
+xAvaxAssetId = binTools.cb58Encode((await xChain.getAssetDescription("AVAX")).assetID);
+cAvaxAssetId = binTools.cb58Encode((await cChain.getAssetDescription("AVAX")).assetID);
+    
+web3 = new Web3(`${protocol}://${ip}:${port}${endpoint}`);
+```
+
+Note that these values are valid for a local node on fuji.
 
