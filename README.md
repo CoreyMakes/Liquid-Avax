@@ -209,12 +209,14 @@ async function setup() {
     await importKeys();
 }
 
-try {
-    await setup();
+async function main() {
+    await setup()
     await CtoP();
-} catch (e) {
-    console.log("We got an error! " + e);
 }
+
+main().catch((e) => {
+  console.log("We got an error! " + e);
+})
 ```
 
 Notice the X-Chain, C-Chain, P-Chain in the code ?
@@ -297,9 +299,9 @@ We are getting the private key from our file and converting it to buffer for the
 
 That's over for the `setup`. We are ready to listen to the smart contract to emit the "Staked" event.
 
-#### Adding the event listener part
+#### Adding the event listener part here
 
-Now, we will start the C --&gt; P cross-chain transfer
+Now, we will start the C --&gt; P cross-chain transfer. First, make sure to have some funds on your C-chain address. Go to the "AVAX test faucet": [https://faucet.avax-test.network/](https://faucet.avax-test.network/). Copy and paste your C-chain address from the Avalanche wallet and request some AVAX.
 
 ```text
 xChainAddress = xKeyChain.getAddressStrings();
@@ -308,7 +310,7 @@ pChainAddress = pKeyChain.getAddressStrings();
     
 let amount = new avalanche.BN("1000000000"); //1 AVAX
     
-let cChainHexAddress = "0xa81eb27374740aec026ebe760f97477dbfed616f";
+let cChainHexAddress = "paste your hex address here";
     
 let nonce = await web3.eth.getTransactionCount(cChainHexAddress, "pending");
     
@@ -328,96 +330,102 @@ let CtoXTxId = await cChain.issueTx(signedCtoXTx);
     
 console.log("CtoXTxId " + CtoXTxId);
     
-    let fee = cChain.getDefaultTxFee();
+let fee = cChain.getDefaultTxFee();
     
-    amount = amount.sub(fee);
+amount = amount.sub(fee);
     
-    return new Promise(function (resolve, reject) {
-        pollTransaction(waitForStatusC, CtoXTxId, resolve, reject);
-    }).then(async (resolve) => {
-        if (resolve === "Accepted") {
-            utxoset = (await xChain.getUTXOs(
-                xChainAddress,
-                cChainBlockchainID,
-            )).utxos;
+return new Promise(function (resolve, reject) {
+    pollTransaction(waitForStatusC, CtoXTxId, resolve, reject);
+}).then(async (resolve) => {
+    if (resolve === "Accepted") {
+        utxoset = (await xChain.getUTXOs(
+            xChainAddress,
+            cChainBlockchainID,
+        )).utxos;
             
-            let unsignedImportXTx = await xChain.buildImportTx(
-                utxoset,
-                xChainAddress,
-                cChainBlockchainID,
-                xChainAddress,
-                xChainAddress,
-            )
+        let unsignedImportXTx = await xChain.buildImportTx(
+            utxoset,
+            xChainAddress,
+            cChainBlockchainID,
+            xChainAddress,
+            xChainAddress,
+        )
             
-            let signedImportXTx = await unsignedImportXTx.sign(xKeyChain);
+        let signedImportXTx = await unsignedImportXTx.sign(xKeyChain);
             
-            let importXTx = await xChain.issueTx(signedImportXTx);
+        let importXTx = await xChain.issueTx(signedImportXTx);
             
-            console.log("importXTx " + importXTx);
+        console.log("importXTx " + importXTx);
             
-            fee = xChain.getDefaultTxFee();
+        fee = xChain.getDefaultTxFee();
             
-            amount = amount.sub(fee);
+        amount = amount.sub(fee);
             
-            // C --> X done, now let's start X --> P.
+        // C --> X done, now let's start X --> P.
             
-            utxoset = (await xChain.getUTXOs(
-                xChainAddress
-            )).utxos;
+        utxoset = (await xChain.getUTXOs(
+            xChainAddress
+        )).utxos;
             
-            let unsignedXtoPTx = await xChain.buildExportTx(
-                utxoset,
-                amount,
-                pChainBlockchainID,
-                pChainAddress,
-                xChainAddress,
-            )
+        let unsignedXtoPTx = await xChain.buildExportTx(
+            utxoset,
+            amount,
+            pChainBlockchainID,
+            pChainAddress,
+            xChainAddress,
+        )
             
-            let signedXtoPTx = unsignedXtoPTx.sign(xKeyChain);
+        let signedXtoPTx = unsignedXtoPTx.sign(xKeyChain);
             
-            let XtoPTxId = await xChain.issueTx(signedXtoPTx);
+        let XtoPTxId = await xChain.issueTx(signedXtoPTx);
             
-            console.log("XtoPTxId " + XtoPTxId);
+        console.log("XtoPTxId " + XtoPTxId);
             
-            fee = xChain.getDefaultTxFee();
+        fee = xChain.getDefaultTxFee();
             
-            amount = amount.sub(fee);
+        amount = amount.sub(fee);
             
-            return new Promise(function (resolve, reject) {
-                pollTransaction(waitForStatusX, XtoPTxId, resolve, reject);
-            }).then(async (resolve) => {
-                if (resolve === "Accepted") { // ... And import the transaction on the P chain.
-                    utxoset = (await pChain.getUTXOs(
-                        pChainAddress,
-                        pChainBlockchainID
-                    )).utxos;
+        return new Promise(function (resolve, reject) {
+            pollTransaction(waitForStatusX, XtoPTxId, resolve, reject);
+        }).then(async (resolve) => {
+            if (resolve === "Accepted") { // ... And import the transaction on the P chain.
+                utxoset = (await pChain.getUTXOs(
+                    pChainAddress,
+                    pChainBlockchainID
+                )).utxos;
+                
+                let unsignedImportPTx = await pChain.buildImportTx(
+                    utxoset,
+                    pChainAddress,
+                    xChainBlockchainID,
+                    pChainAddress,
+                    pChainAddress,
+                )
                     
-                    let unsignedImportPTx = await pChain.buildImportTx(
-                        utxoset,
-                        pChainAddress,
-                        xChainBlockchainID,
-                        pChainAddress,
-                        pChainAddress,
-                    )
+                let signedImportPTx = unsignedImportPTx.sign(pKeyChain);
                     
-                    let signedImportPTx = unsignedImportPTx.sign(pKeyChain);
+                let importPTx = await pChain.issueTx(signedImportPTx);
                     
-                    let importPTx = await pChain.issueTx(signedImportPTx);
+                console.log("importPTx " + importPTx);
                     
-                    console.log("importPTx " + importPTx);
-                    
-                    fee = pChain.getDefaultTxFee();
+                fee = pChain.getDefaultTxFee();
             
-                    amount = amount.sub(fee);
+                amount = amount.sub(fee);
                     
-                    await stakeToNode(nodeId)
-                } else {
-                    console.log("An error happened for a transaction with ID: " + XtoPTxId)
-                }
-            })
-        } else {
-            console.log("An error happened for a transaction with ID: " + CtoXTxId)
-        }
-    })
+                await stakeToNode(nodeId)
+            } else {
+                console.log("An error happened for a transaction with ID: " + XtoPTxId)
+            }
+        })
+    } else {
+        console.log("An error happened for a transaction with ID: " + CtoXTxId)
+    }
+})
 ```
+
+This code snippet is doing a cross-chain transfer between the C-chain and P-chain with 1 $AVAX, deducting the fees for each transaction.
+
+We cannot directly do a C-chain to P-chain transaction, but we can do C-chain to X-chain and X-chain to P-chain. For each transaction export, we need to wait for the transaction to be marked as "Accepted" to import the transaction.
+
+We are now ready to delegate to a node now that the funds are on the P-chain.
 
