@@ -50,18 +50,6 @@ When the event "StakeEnded" is detected, the user will be able to redeem the fun
 
 Okay, we hope that you are now full set to go through the tutorial. We will start by the smart contract.
 
-Find the code on Github:
-
-Smart contracts: [https://github.com/Syavel/AvalancheTuto/tree/main/contracts](https://github.com/Syavel/AvalancheTuto/tree/main/contracts)
-
-Backend: [https://github.com/Syavel/AvalancheTuto/tree/main/Backend](https://github.com/Syavel/AvalancheTuto/tree/main/Backend)
-
-Frontend: [https://github.com/iFrostizz/fluidavax-frontend/tree/devel](https://github.com/iFrostizz/fluidavax-frontend/tree/devel)
-
-UI kit: [https://github.com/iFrostizz/fluidavax-uikit](https://github.com/iFrostizz/fluidavax-uikit)
-
-SDK: [https://github.com/iFrostizz/fluidavax-sdk](https://github.com/iFrostizz/fluidavax-sdk)
-
 ### Smart contract
 
 We start by importing the basic ERC20 smart contract \(this is a common standart for creating tokens, more details here :\) and the Ownable one \(this is a contract wich permit to restrain function to an owner adress\).
@@ -850,5 +838,5 @@ yarn start
 
 
 
-Open your browser. The url should be `localhost:3000`
+Open your browser. The url will mostly be `localhost:3000`
 
