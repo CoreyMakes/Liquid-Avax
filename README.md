@@ -584,7 +584,7 @@ The "web3" package will be used to interact with our smart contract, and to list
 
 
 
-Let's start by gathering informations that will be needed in the future.
+Let's start by gathering informations that will be needed in the future. The protocol that we will be using here for our web3 constructor is websocket, because http is not supported when it comes to subscribe to events.
 
 ```text
 async function getInformations() {
@@ -620,9 +620,22 @@ async function getInformations() {
 }
 ```
 
+Now, we will be importing the private key in order to be able to issue transactions, and storing the C-Chain and P-Chain addresses for later. We are getting the private key from our file and converting it to buffer for the C-chain. Note that for the X and P-Chain, we need to derivate it to CB58 format.
 
+```text
+async function importKeys() {
+    let buffer = Buffer.from(privateKey, 'hex')
+    let CB58Encoded = `PrivateKey-${binTools.cb58Encode(buffer)}`
+    xKeyChain.importKey(CB58Encoded);
+    cKeyChain.importKey(buffer);
+    pKeyChain.importKey(CB58Encoded);
+    
+    cChainAddress = cKeyChain.getAddressStrings();
+    pChainAddress = pKeyChain.getAddressStrings();
+}
+```
 
-So, let's listen to events emitted by the smart contract. The event we are currently interested in is the "Staked" event. It is triggered everytime someone stakes his assets, and will provide some key informations to use later...
+So, we are now ready to listen to events emitted by the smart contract. The event we are currently interested in is the "Staked" event. It is triggered everytime someone stakes his assets, and will provide some key informations to use later...
 
 ```text
 async function waitForStaked() {
@@ -639,7 +652,7 @@ async function waitForStaked() {
             let amountWithDecimals = parseInt(dataHex.substring(64), 16);
             
             web3.eth.defaultAccount = masterAddress
-            let data = await stakingContract.methods.withdraw(id).encodeABI();
+            let data = stakingContract.methods.withdraw(id).encodeABI();
             let nonce = await web3.eth.getTransactionCount(masterAddress, "pending");
             let tx = {from:masterAddress, to:"0x5bD27eF83d57915FC3eE7feB2FebEB9c69d52B04", data:data, gasPrice:225*10**9, gas:2100000, nonce:nonce}
             let stx = await web3.eth.accounts.signTransaction(tx, privateKey);
@@ -653,226 +666,132 @@ async function waitForStaked() {
 }
 ```
 
-In this snippet, we are subscribing to the logs of the "Staked" event by instanciating the sAVAX contract. Everytime this event is triggered, we can decode the logs. It shows under an hex, you could for example `console.log(logs.data)` if you're curious.
+In this snippet, we are subscribing to the logs of the "Staked" event after instanciating the sAVAX contract. Everytime this event is triggered, we can decode the logs. It shows as an hex, you could for example `console.log(logs.data)` if you're curious about it. We are then withdrawing the assets sent to the smart contract \(as the smart contract owner\).
 
-We now have enough data to withdraw the funds, and cross-chain before staking it to a node.
-
-
-
-Paste this in the `getInformations` function:
+We now have enough data to cross-chain before staking to a node. First, make sure that you have enough funds on your C-chain address. Go to the "AVAX test faucet": [https://faucet.avax-test.network/](https://faucet.avax-test.network/). Copy and paste your C-chain address from the Avalanche wallet and request some \(fake\) AVAX.
 
 ```text
-ip = "localhost";
-port = 9650;
-protocol = "http";
-networkID = 5;
-avalancheInstance = new avalanche.Avalanche(ip, port, protocol, networkID);
-
-const endpoint = '/ext/bc/C/rpc';
-
-xChain = avalancheInstance.XChain();
-xKeyChain = xChain.keyChain();
-xChainBlockchainID = xChain.getBlockchainID();
-
-cChain = avalancheInstance.CChain();
-cKeyChain = cChain.keyChain();
-cChainBlockchainID = cChain.getBlockchainID();
-cChainAddress = cKeyChain.getAddressStrings();
-
-pChain = avalancheInstance.PChain();
-pKeyChain = pChain.keyChain();
-pChainBlockchainID = pChain.getBlockchainID();
-pChainAddress = pKeyChain.getAddressStrings();
-
-xAvaxAssetId = binTools.cb58Encode((await xChain.getAssetDescription("AVAX")).assetID);
-cAvaxAssetId = binTools.cb58Encode((await cChain.getAssetDescription("AVAX")).assetID);
-
-web3 = new Web3(`${protocol}://${ip}:${port}${endpoint}`);
-```
-
-This is the place where we are instanciating our nodes for both AvalancheJS and web3. We are also storing some data that will be useful for the future.
-
-{% hint style="info" %}
-These values are valid for a local node on fuji only.
-{% endhint %}
-
-This will be the content of your `importKeys` function:
-
-```text
-const pKeyHex = JSON.parse(await fs.readFileSync("./data.json")).privateKey;
-let buffer = Buffer.from(pKeyHex, 'hex')
-let CB58Encoded = `PrivateKey-${binTools.cb58Encode(buffer)}`
-xKeyChain.importKey(CB58Encoded);
-cKeyChain.importKey(buffer);
-pKeyChain.importKey(CB58Encoded);
-```
-
-We are getting the private key from our file and converting it to buffer for the C-chain. For the X and P-Chain, we need to derivate to CB58 format. Then, we can import these encoded versions of the private key to the node.
-
-That's over for the `setup`. We are ready to listen to the smart contract to emit the "Staked" event.
-
-We will be using web3 to subscribe to the events emitted by the smart contract. Here is how to do it:
-
-```text
-import Web3 from "web3";
-import fs from "fs";
-
-let web3, contractAbi;
-
-async function waitForStaked() {
-    let stakingContract = new web3.eth.Contract(contractAbi, "yourContractAddress");
-    let stakedEvent = stakingContract.events.Staked();
-    await web3.eth.subscribe('logs', {
-        address: stakedEvent.arguments[0].address,
-        topics: stakedEvent.arguments[0].topics,
-    }, async function (error, logs) {
-        if (!error) {
-            let dataHex = logs.data.substring(2);
-            let id = parseInt(dataHex.substring(0, 64), 16);
-            let amountWithDecimals = parseInt(dataHex.substring(64), 16);
-            // await CtoP(id, amountWithDecimals);
+async function CtoP() { //a C --> P cross-chain transfer doesn't exists, but C --> X, X --> P does.
+    
+    // Includes the fees in the transferred AVAX
+    
+    xChainAddress = xKeyChain.getAddressStrings();
+    cChainAddress = cKeyChain.getAddressStrings();
+    pChainAddress = pKeyChain.getAddressStrings();
+    
+    let amount = new BN("1000000000"); //1 AVAX
+    
+    let cChainHexAddress = "0x7bD7A7D2Ba70db40740780828b236F9246BB7F78";
+    
+    let nonce = await web3.eth.getTransactionCount(cChainHexAddress, "pending");
+    
+    let unsignedCtoXTx = await cChain.buildExportTx(
+        amount,
+        cAvaxAssetId,
+        xChainBlockchainID,
+        cChainHexAddress,
+        cChainAddress[0],
+        xChainAddress,
+        nonce,
+    )
+    
+    let signedCtoXTx = await unsignedCtoXTx.sign(cKeyChain);
+    
+    let CtoXTxId = await cChain.issueTx(signedCtoXTx);
+    
+    console.log("CtoXTxId " + CtoXTxId);
+    
+    let fee = cChain.getDefaultTxFee();
+    
+    amount = amount.sub(fee);
+    
+    return new Promise(function (resolve, reject) {
+        pollTransaction(waitForStatusC, CtoXTxId, resolve, reject);
+    }).then(async (resolve, reject) => {
+        if (resolve === "Accepted") {
+            utxoset = (await xChain.getUTXOs(
+                xChainAddress,
+                cChainBlockchainID,
+            )).utxos;
+            
+            let unsignedImportXTx = await xChain.buildImportTx(
+                utxoset,
+                xChainAddress,
+                cChainBlockchainID,
+                xChainAddress,
+                xChainAddress,
+            )
+            
+            let signedImportXTx = await unsignedImportXTx.sign(xKeyChain);
+            
+            let importXTx = await xChain.issueTx(signedImportXTx);
+            
+            console.log("importXTx " + importXTx);
+            
+            fee = xChain.getDefaultTxFee();
+            
+            amount = amount.sub(fee);
+            
+            // C --> X done, now let's start X --> P.
+            
+            utxoset = (await xChain.getUTXOs(
+                xChainAddress,
+                //xChainBlockchainID
+            )).utxos;
+            
+            let unsignedXtoPTx = await xChain.buildExportTx(
+                utxoset,
+                amount,
+                pChainBlockchainID,
+                pChainAddress,
+                xChainAddress,
+            )
+            
+            let signedXtoPTx = unsignedXtoPTx.sign(xKeyChain);
+            
+            let XtoPTxId = await xChain.issueTx(signedXtoPTx);
+            
+            console.log("XtoPTxId " + XtoPTxId);
+            
+            fee = xChain.getDefaultTxFee();
+            
+            amount = amount.sub(fee);
+            
+            return new Promise(function (resolve, reject) {
+                pollTransaction(waitForStatusX, XtoPTxId, resolve, reject);
+            }).then(async (resolve, reject) => {
+                if (resolve === "Accepted") { // ... And import the transaction on the P chain.
+                    utxoset = (await pChain.getUTXOs(
+                        pChainAddress,
+                        pChainBlockchainID
+                    )).utxos;
+                    
+                    let unsignedImportPTx = await pChain.buildImportTx(
+                        utxoset,
+                        pChainAddress,
+                        xChainBlockchainID,
+                        pChainAddress,
+                        pChainAddress,
+                    )
+                    
+                    let signedImportPTx = unsignedImportPTx.sign(pKeyChain);
+                    
+                    let importPTx = await pChain.issueTx(signedImportPTx);
+                    
+                    console.log("importPTx " + importPTx);
+                    
+                    fee = pChain.getDefaultTxFee();
+            
+                    amount = amount.sub(fee);
+                } else {
+                    // Error
+                }
+            })
         } else {
-            console.log(error)
+            // Throw an error
         }
     })
 }
-
-async function setup() {
-    // web3 = new Web3("wss://api.avax-test.network/ext/bc/C/ws"); fuji public API
-    web3 = new Web3("wss://127.0.0.1:9650/ext/bc/C/ws");
-    await waitForStaked();
-    contractAbi = JSON.parse(await fs.readFileSync("./abi.json"))
-}
-
-setup();
-```
-
-The protocol that we will be using here is websocket, because http is not supported when it comes to subscribe to events. Also don't forget to add your contract address.
-
-In the `waitForStacked()` function, we are subscribing to the logs of the "Staked" event. This `logs` variable is in fact an object containing some data. But the what we need here is located in `logs.data`.
-
-This is a 128 characters longs hex \(when we remove the `0x` at the start\) containing two hexadecimal encoded values, which are the stake ID, and the amount of AVAX staked. This could be passed as an argument to stake the correct amount of AVAX.
-
-Now, we will start the C --&gt; P cross-chain transfer. First, make sure to have some funds on your C-chain address. Go to the "AVAX test faucet": [https://faucet.avax-test.network/](https://faucet.avax-test.network/). Copy and paste your C-chain address from the Avalanche wallet and request some AVAX.
-
-```text
-xChainAddress = xKeyChain.getAddressStrings();
-cChainAddress = cKeyChain.getAddressStrings();
-pChainAddress = pKeyChain.getAddressStrings();
-
-let amount = new avalanche.BN("1000000000"); //1 AVAX
-
-let cChainHexAddress = "paste your hex address here";
-
-let nonce = await web3.eth.getTransactionCount(cChainHexAddress, "pending");
-
-let unsignedCtoXTx = await cChain.buildExportTx(
-    amount,
-    cAvaxAssetId,
-    xChainBlockchainID,
-    cChainHexAddress,
-    cChainAddress[0],
-    xChainAddress,
-    nonce,
-)
-
-let signedCtoXTx = await unsignedCtoXTx.sign(cKeyChain);
-
-let CtoXTxId = await cChain.issueTx(signedCtoXTx);
-
-console.log("CtoXTxId " + CtoXTxId);
-
-let fee = cChain.getDefaultTxFee();
-
-amount = amount.sub(fee);
-
-return new Promise(function (resolve, reject) {
-    pollTransaction(waitForStatusC, CtoXTxId, resolve, reject);
-}).then(async (resolve) => {
-    if (resolve === "Accepted") {
-        utxoset = (await xChain.getUTXOs(
-            xChainAddress,
-            cChainBlockchainID,
-        )).utxos;
-
-        let unsignedImportXTx = await xChain.buildImportTx(
-            utxoset,
-            xChainAddress,
-            cChainBlockchainID,
-            xChainAddress,
-            xChainAddress,
-        )
-
-        let signedImportXTx = await unsignedImportXTx.sign(xKeyChain);
-
-        let importXTx = await xChain.issueTx(signedImportXTx);
-
-        console.log("importXTx " + importXTx);
-
-        fee = xChain.getDefaultTxFee();
-
-        amount = amount.sub(fee);
-
-        // C --> X done, now let's start X --> P.
-
-        utxoset = (await xChain.getUTXOs(
-            xChainAddress
-        )).utxos;
-
-        let unsignedXtoPTx = await xChain.buildExportTx(
-            utxoset,
-            amount,
-            pChainBlockchainID,
-            pChainAddress,
-            xChainAddress,
-        )
-
-        let signedXtoPTx = unsignedXtoPTx.sign(xKeyChain);
-
-        let XtoPTxId = await xChain.issueTx(signedXtoPTx);
-
-        console.log("XtoPTxId " + XtoPTxId);
-
-        fee = xChain.getDefaultTxFee();
-
-        amount = amount.sub(fee);
-
-        return new Promise(function (resolve, reject) {
-            pollTransaction(waitForStatusX, XtoPTxId, resolve, reject);
-        }).then(async (resolve) => {
-            if (resolve === "Accepted") { // ... And import the transaction on the P chain.
-                utxoset = (await pChain.getUTXOs(
-                    pChainAddress,
-                    pChainBlockchainID
-                )).utxos;
-
-                let unsignedImportPTx = await pChain.buildImportTx(
-                    utxoset,
-                    pChainAddress,
-                    xChainBlockchainID,
-                    pChainAddress,
-                    pChainAddress,
-                )
-
-                let signedImportPTx = unsignedImportPTx.sign(pKeyChain);
-
-                let importPTx = await pChain.issueTx(signedImportPTx);
-
-                console.log("importPTx " + importPTx);
-
-                fee = pChain.getDefaultTxFee();
-
-                amount = amount.sub(fee);
-
-                // await stakeToNode(nodeId)
-            } else {
-                console.log("An error happened for a transaction with ID: " + XtoPTxId)
-            }
-        })
-    } else {
-        console.log("An error happened for a transaction with ID: " + CtoXTxId)
-    }
-})
 ```
 
 This code snippet is doing a cross-chain transfer between the C-chain and P-chain with 1 $AVAX, deducting the fees for each transaction. You can find the value of the fees on Avalanche here: [https://docs.avax.network/learn/platform-overview/transaction-fees\#fee-schedule](https://docs.avax.network/learn/platform-overview/transaction-fees#fee-schedule). Just keep in mind that at least 25 AVAX \(after deducting the fees, and on mainnet\) are needed to delegate to a node.
@@ -882,56 +801,14 @@ We cannot directly do a C-chain to P-chain transaction, but we can do C-chain to
 We are now ready to delegate to a node now that the funds are on the P-chain.
 
 {% hint style="info" %}
-We highly recommend to run your own Avalanche node rather than the public API if you run on mainnet, and need a high fiability.
+We highly recommend to run your own Avalanche node rather than the public API if you run on mainnet, and need a high fiability \(production use\).
 
-Please check: [https://docs.avax.network/build/tutorials/nodes-and-staking/run-avalanche-node](https://docs.avax.network/build/tutorials/nodes-and-staking/run-avalanche-node)
+Please check: [https://docs.avax.network/build/tutorials/nodes-and-staking/run-avalanche-node](https://docs.avax.network/build/tutorials/nodes-and-staking/run-avalanche-node)  
 {% endhint %}
-
-Create an asynchronous function `stakeToNode`that will stake the lastly cross-chain transferred funds to a predetermined node. Here is the code that we will nest into it:
-
-```text
-async function stakeToNode() {
-    let nodeId = "NodeID-LPLhV54tkseYMQ4Ap9oUCoE2KAEPmyNUK";
-    
-    const secpTransferOutput = new SECPTransferOutput(
-        unlocked.sub(fee).sub(stakeAmount.minValidatorStake),
-        pAddresses,
-        locktime,
-        threshold
-    )
-    const outputs = [];
-    const transferableOutput = new TransferableOutput(
-        avaxAssetID,
-        secpTransferOutput
-    )
-    outputs.push(transferableOutput)
-    const addDelegatorTx = new AddDelegatorTx(
-        networkID,
-        bintools.cb58Decode(pChainBlockchainID),
-        outputs,
-        inputs,
-        memo,
-        NodeIDStringToBuffer(nodeID),
-        startTime,
-        endTime,
-        stakeAmount.minDelegatorStake,
-        stakeOuts,
-        rewardOwners
-    )
-    
-    const unsignedTx = new UnsignedTx(addDelegatorTx)
-    const tx = unsignedTx.sign(pKeychain)
-    const txid = await pchain.issueTx(tx)
-    console.log(`Success! TXID: ${txid}`)
-}
-```
-
-  
-
 
 ### Frontend
 
-We won't learn you how to create a frontend in this tutorial, but we've forked one from Olive Swap just to give you an insight. Here is how to run the frontend:
+We won't try to learn you how to create a frontend in this tutorial, but we've forked one from Olive Swap just to give you an insight. Here is how to run the frontend:
 
 Start by installing git. This will be used to clone the repo of our frontend.
 
