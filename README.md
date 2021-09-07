@@ -10,7 +10,7 @@ description: >-
 
 #### What is liquid staking ?
 
-Liquid staking is an alternative to staking. The advantage of liquid staking is that staked asset are not locked anymore, while still earning returns and supporting decentralisation.
+Liquid staking is an alternative to normal staking. The advantage of liquid staking is that staked asset are not locked anymore, while still earning returns and supporting the network decentralisation.
 
 #### How does it work ?
 
@@ -26,7 +26,7 @@ This project is composed of several components:
 
 #### Frontend
 
-The frontend, or user interface is our platform called "Liquid Avax". We forked Olive Swap, a fork of Pancake Swap for the sake of simplicity, and security on Avalanche. Here are a quick preview of our frontend:
+The frontend, or user interface is our platform called "Liquid Avax". We forked Olive Swap, a fork of Pancake Swap for the sake of simplicity. Here are a quick preview of our frontend:
 
 ![Let&apos;s stake 25 $AVAX...](.gitbook/assets/image.png)
 
@@ -421,7 +421,7 @@ You're ready!
 Start by creating an Avalanche wallet here: [https://wallet.avax.network/](https://wallet.avax.network/) by clicking on "Create new wallet", and "Generate key phrase". After that you accessed to your wallet, head on to "Manage keys", and "View C Chain private key".
 
 {% hint style="info" %}
-Make sure to never share this private key. Anyone can access to your wallet using it.
+Make sure to never share this private key. Anyone can access your wallet using it.
 {% endhint %}
 
 Copy and paste it in a ".json" file. Let's call it "privateData.json". If you plan to publish to your repo, create a .gitignore containing all the private stuff.
@@ -452,33 +452,48 @@ Now, you can copy/paste the code skeleton in the .js file
 
 ```text
 // This script will be used to do the cross-chain transfer of the owner wallet from C to P chain and stake them
-// to a node.
+// to the user-chosen node.
 
 import fs from "fs";
-import avalanche from "avalanche";
+import { Avalanche, BinTools, BN, Buffer } from "avalanche";
 import Web3 from "web3";
-import { Buffer } from "buffer";
 
-let binTools = avalanche.BinTools.getInstance();
-
-let ip, protocol, port, networkID, avalancheInstance;
-
-let xChain, xKeyChain, xChainAddress;
-let cChain, cKeyChain, cChainAddress;
-let pChain, pKeyChain, pChainAddress;
+let xChain, xKeyChain, xChainAddressString;
+let cChain, cKeyChain, cChainAddressString;
+let pChain, pKeyChain, pChainAddressString;
 
 let xChainBlockchainID, cChainBlockchainID, pChainBlockchainID;
 
 let web3;
 
+let contractAbi;
+
+let masterAddress = "0x7bD7A7D2Ba70db40740780828b236F9246BB7F78";
+let privateKey = JSON.parse(await fs.readFileSync("./data.json")).privateKey;
+
 let utxoset;
 
-async function CtoP() { //a C --> P cross-chain transfer doesn't exists, but C --> X, X --> P does.
+const FOURTHEEN_DAYS = 60*60*24*14;
+const FULL_YEAR = 60*60*24*365;
+
+async function waitForStaked() {
 
 }
 
-async function importKeys() { //Importing your encoded private key here to the node!
+async function stakeToNode(stakeAmount, stakeId, locktime, sender, txHash) {
+    
+}
 
+async function CtoP(amountWithDecimals, stakeId, endingTimestamp, sender, txHash) { //a C --> P cross-chain transfer doesn't exists, but C --> X, X --> P does.
+    
+}
+
+let binTools = BinTools.getInstance();
+
+let privateKey;
+
+async function importKeys() {
+    
 }
 
 let transactionStatus;
@@ -488,7 +503,7 @@ async function waitForStatusX(transactionId) {
     return transactionStatus;
 }
 
-async function waitForStatusP(transactionId) { //Either X or P chain.
+async function waitForStatusP(transactionId) {
     transactionStatus = (await pChain.getTxStatus(transactionId)).status;
     return transactionStatus;
 }
@@ -510,20 +525,28 @@ async function pollTransaction(func, transactionID, resolve, reject) {
     }
 }
 
-let xAvaxAssetId, cAvaxAssetId;
+let xAvaxAssetId, cAvaxAssetId, pAvaxAssetId;
+let xFees, cFees, pFees;
 
-async function getInformations() { //Getting some relevant data for the code
+let avalancheInstance;
+
+async function getInformations() {
 
 }
 
 async function setup() {
     await getInformations();
     await importKeys();
+    
+    cChainAddressString = cKeyChain.getAddressStrings();
+    pChainAddressString = pKeyChain.getAddressStrings();
 }
 
 async function main() {
-    await setup()
-    await CtoP();
+    await setup();
+    web3 = new Web3(`wss://api.avax-test.network/ext/bc/C/ws`)
+    contractAbi = JSON.parse(await fs.readFileSync("./abi.json"))
+    await waitForStaked();
 }
 
 main().catch((e) => {
@@ -553,11 +576,88 @@ npm install avalanche
 
 Do that for each used package at the top of the code.
 
-The "fs" package is used to manipulate files. In this case, it is our solution to not hard code the private key and keep it safe.
+The "fs" package is used to manipulate files. In this case, it is our solution to not hard code the private key and keep it safe. But it is also used to instanciate the sAVAX contract by providing its address and ABI \(the ABI is a .json file\).
 
 AvalancheJS is the Javascript library from Ava labs to interact with an Avalanche node. You can find their repository here with relevant code examples. [https://github.com/ava-labs/avalanchejs](https://github.com/ava-labs/avalanchejs)
 
-The "web3" package will be used to interact with our smart contract.
+The "web3" package will be used to interact with our smart contract, and to listen to the event emitted by this last one.
+
+
+
+Let's start by gathering informations that will be needed in the future.
+
+```text
+async function getInformations() {
+    const ip = "localhost";
+    const port = 9650;
+    const protocol = "http";
+    const networkID = 5;
+    avalancheInstance = new Avalanche(ip, port, protocol, networkID);
+    
+    xChain = avalancheInstance.XChain();
+    xKeyChain = xChain.keyChain();
+    xChainBlockchainID = xChain.getBlockchainID();
+    
+    cChain = avalancheInstance.CChain();
+    cKeyChain = cChain.keyChain();
+    cChainBlockchainID = cChain.getBlockchainID();
+    cChainAddress = cKeyChain.getAddressStrings();
+    
+    pChain = avalancheInstance.PChain();
+    pKeyChain = pChain.keyChain();
+    pChainBlockchainID = pChain.getBlockchainID();
+    pChainAddress = pKeyChain.getAddressStrings();
+    
+    xAvaxAssetId = binTools.cb58Encode((await xChain.getAssetDescription("AVAX")).assetID);
+    cAvaxAssetId = binTools.cb58Encode((await cChain.getAssetDescription("AVAX")).assetID);
+    
+    const web3Protocol = "wss";
+    const web3Path = '/ext/bc/C/ws';
+    
+    web3 = new Web3(`${web3Protocol}://api.avax-test.network${web3Path}`);
+    
+    contractAbi = JSON.parse(await fs.readFileSync("./sAvaxABI.json"))
+}
+```
+
+
+
+So, let's listen to events emitted by the smart contract. The event we are currently interested in is the "Staked" event. It is triggered everytime someone stakes his assets, and will provide some key informations to use later...
+
+```text
+async function waitForStaked() {
+    let stakingContract = new web3.eth.Contract(contractAbi, "0x5bD27eF83d57915FC3eE7feB2FebEB9c69d52B04");
+    let stakedEvent = stakingContract.events.Staked();
+    await web3.eth.subscribe('logs', {
+        address: stakedEvent.arguments[0].address,
+        topics: stakedEvent.arguments[0].topics,
+    }, async function (error, logs) {
+        if (!error) {
+            console.log("New stake")
+            let dataHex = logs.data.substring(2);
+            let id = parseInt(dataHex.substring(0, 64), 16);
+            let amountWithDecimals = parseInt(dataHex.substring(64), 16);
+            
+            web3.eth.defaultAccount = masterAddress
+            let data = await stakingContract.methods.withdraw(id).encodeABI();
+            let nonce = await web3.eth.getTransactionCount(masterAddress, "pending");
+            let tx = {from:masterAddress, to:"0x5bD27eF83d57915FC3eE7feB2FebEB9c69d52B04", data:data, gasPrice:225*10**9, gas:2100000, nonce:nonce}
+            let stx = await web3.eth.accounts.signTransaction(tx, privateKey);
+            let htx = await web3.eth.sendSignedTransaction(stx.rawTransaction);
+            console.log(htx)
+            await CtoP(id, amountWithDecimals);
+        } else {
+            console.log(error)
+        }
+    })
+}
+```
+
+In this snippet, we are subscribing to the logs of the "Staked" event by instanciating the sAVAX contract. Everytime this event is triggered, we can decode the logs. It shows under an hex, you could for example `console.log(logs.data)` if you're curious.
+
+We now have enough data to withdraw the funds, and cross-chain before staking it to a node.
+
+
 
 Paste this in the `getInformations` function:
 
@@ -775,15 +875,63 @@ return new Promise(function (resolve, reject) {
 })
 ```
 
-This code snippet is doing a cross-chain transfer between the C-chain and P-chain with 1 $AVAX, deducting the fees for each transaction. You can find the value of the fees on Avalanche here: [https://docs.avax.network/learn/platform-overview/transaction-fees\#fee-schedule](https://docs.avax.network/learn/platform-overview/transaction-fees#fee-schedule).
+This code snippet is doing a cross-chain transfer between the C-chain and P-chain with 1 $AVAX, deducting the fees for each transaction. You can find the value of the fees on Avalanche here: [https://docs.avax.network/learn/platform-overview/transaction-fees\#fee-schedule](https://docs.avax.network/learn/platform-overview/transaction-fees#fee-schedule). Just keep in mind that at least 25 AVAX \(after deducting the fees, and on mainnet\) are needed to delegate to a node.
 
 We cannot directly do a C-chain to P-chain transaction, but we can do C-chain to X-chain and X-chain to P-chain. For each transaction export, we need to wait for the transaction to be marked as "Accepted" to import the transaction. This is why the `pollTransaction` will check the transaction status each 100ms and resolve the Promise when the transaction is accepted. If this is not done, we would try to export more funds than the ones that are in our wallet, and fail the transaction because of insufficient funds.
 
 We are now ready to delegate to a node now that the funds are on the P-chain.
 
+{% hint style="info" %}
+We highly recommend to run your own Avalanche node rather than the public API if you run on mainnet, and need a high fiability.
+
+Please check: [https://docs.avax.network/build/tutorials/nodes-and-staking/run-avalanche-node](https://docs.avax.network/build/tutorials/nodes-and-staking/run-avalanche-node)
+{% endhint %}
+
+Create an asynchronous function `stakeToNode`that will stake the lastly cross-chain transferred funds to a predetermined node. Here is the code that we will nest into it:
+
+```text
+async function stakeToNode() {
+    let nodeId = "NodeID-LPLhV54tkseYMQ4Ap9oUCoE2KAEPmyNUK";
+    
+    const secpTransferOutput = new SECPTransferOutput(
+        unlocked.sub(fee).sub(stakeAmount.minValidatorStake),
+        pAddresses,
+        locktime,
+        threshold
+    )
+    const outputs = [];
+    const transferableOutput = new TransferableOutput(
+        avaxAssetID,
+        secpTransferOutput
+    )
+    outputs.push(transferableOutput)
+    const addDelegatorTx = new AddDelegatorTx(
+        networkID,
+        bintools.cb58Decode(pChainBlockchainID),
+        outputs,
+        inputs,
+        memo,
+        NodeIDStringToBuffer(nodeID),
+        startTime,
+        endTime,
+        stakeAmount.minDelegatorStake,
+        stakeOuts,
+        rewardOwners
+    )
+    
+    const unsignedTx = new UnsignedTx(addDelegatorTx)
+    const tx = unsignedTx.sign(pKeychain)
+    const txid = await pchain.issueTx(tx)
+    console.log(`Success! TXID: ${txid}`)
+}
+```
+
+  
+
+
 ### Frontend
 
-Here is how to run the frontend.
+We won't learn you how to create a frontend in this tutorial, but we've forked one from Olive Swap just to give you an insight. Here is how to run the frontend:
 
 Start by installing git. This will be used to clone the repo of our frontend.
 
